@@ -29,13 +29,15 @@ build/
 .DS_Store
 Thumbs.db
 
-# Model artifacts / local data (optional large files)
+# Large / regenerable local data
+data/synthetic/
 artifacts/
 *.pkl
 *.joblib
-data/raw/
-data/processed/
-!data/.gitkeep
+
+# Keep versioned sample for the repo
+!data/sample/
+!data/sample/**
 
 # Logs / coverage
 *.log

@@ -1,155 +1,182 @@
 # Delivery Promise Optimization Challenge
 
-Solución técnica para estimar la **promesa de entrega** en el checkout de Proximity (Mercado Libre), expresada como un intervalo de tiempo del mismo día (ej. 21:15–21:45), y una estrategia razonable de **activación del comercio**.
+Solución técnica para estimar la **promesa de entrega** en el checkout de Proximity (Mercado Libre) y decidir **cuándo activar al comercio**.
 
-## Problema
+La promesa se expresa como un intervalo del mismo día (ej. 21:15–21:45). Debe equilibrar competitividad (intervalos atractivos) y realismo (bajo *Delay*).
 
-La promesa se comunica una sola vez en el checkout. Debe equilibrar:
+## Cómo formalicé el problema
 
-- **Competitividad**: intervalos atractivos que favorezcan la compra.
-- **Realismo**: minimizar entregas fuera de promesa (*Delay*) y mala experiencia.
+Estimamos el tiempo total `checkout → entrega` como una distribución condicional, no un punto único. En checkout devolvemos:
 
-El tiempo total de entrega se descompone en:
+1. Un **intervalo de promesa** `[q20, q80]` redondeado a bloques de 15 minutos.
+2. Un timestamp de **activación del comercio** para alinear prep con la llegada estimada del repartidor al PoS.
 
-1. Preparación en el comercio (parcialmente no observable: el fin exacto del empaquetado no se ve).
-2. Retiro por el repartidor.
-3. Entrega al cliente.
+El fin exacto del empaquetado **no es observable**. Por eso el histórico de preparación usa un proxy: `pickup_ts - store_notify_ts`.
 
-Además de estimar el intervalo, hay que decidir **cuándo notificar al comercio** para iniciar la preparación.
-
-> Las secciones siguientes se completan / ajustan a medida que se implementa la solución.
-
-## Estructura del repositorio
+## Estructura
 
 ```text
 Mercado_Libre_Challenge/
 ├── README.md
 ├── requirements.txt
-├── sql/
-│   └── build_dataset.sql          # Consulta SQL para dataset y features
+├── sql/build_dataset.sql          # Contrato SQL de dataset/features
+├── scripts/run_pipeline.py        # Reproduce datos + entrenamiento
+├── notebooks/01_evaluation.ipynb
 ├── src/
-│   ├── data/                      # Generación de datos sintéticos / carga
-│   ├── features/                  # Construcción de variables predictoras
-│   ├── models/                    # Entrenamiento y estimación de promesa
-│   ├── activation/                # Estrategia de notificación al comercio
-│   └── api/                       # Servicio HTTP
-├── notebooks/                     # Exploración y evaluación (opcional)
-├── artifacts/                     # Modelos persistidos (ignorado por git)
-└── data/                          # Datos locales (ignorado por git)
+│   ├── data/                      # Generación sintética
+│   ├── features/                  # Features online/offline (anti-leakage)
+│   ├── models/                    # Cuantiles LightGBM + evaluación
+│   ├── activation/                # Estrategia de notify al comercio
+│   └── api/                       # FastAPI /delivery-promise
+├── data/sample/                   # Sample versionado
+├── data/synthetic/                # Full dump local (gitignore)
+└── artifacts/                     # Modelos locales (gitignore)
 ```
 
 ## Setup
 
-Requiere Python 3.12+.
+Python 3.12+:
 
 ```powershell
 cd Mercado_Libre_Challenge
 py -3.12 -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python scripts/run_pipeline.py
 ```
 
-## Datos y SQL
+El pipeline genera ~12k órdenes sintéticas, entrena los modelos y escribe métricas en `artifacts/metrics.json`.
 
-No se provee un dataset de ejemplo: se generan **datos sintéticos** coherentes con los eventos operativos (notificación al comercio, notificación al repartidor, llegada al PoS, retiro, entrega).
+## Datos sintéticos y SQL
 
-La consulta SQL y la explicación de decisiones de feature engineering viven en:
+No hay dataset de ejemplo del challenge: generamos eventos operativos coherentes:
 
-- `sql/build_dataset.sql`
+`checkout → store_notify → courier_notify → courier_arrive_pos → pickup → deliver`
 
-### Variables predictoras principales (borrador)
+más un `prep_ready_ts` **latente** (solo para simular la física; nunca es feature).
 
-| Feature | Motivación |
-|---------|------------|
-| Hora / día de la semana del checkout | Estacionalidad de demanda y tráfico |
-| Categoría / tipo de orden | Impacta tiempo de preparación |
-| Distancia / zona origen–destino | Impacta retiro y entrega |
-| Históricos del comercio (prep time p50/p90) | Señal de capacidad del PoS |
-| Históricos de courier en zona | Señal de disponibilidad / velocidad |
-| Carga operativa estimada | Contexto de congestión |
+La consulta documental está en [`sql/build_dataset.sql`](sql/build_dataset.sql). El equivalente ejecutable es [`src/features/build_features.py`](src/features/build_features.py).
 
-## Enfoque de estimación
+### Decisiones de construcción de datos
 
-*(Completar al implementar)*
+| Decisión | Motivo |
+|----------|--------|
+| Target = minutos totales a entrega | Es lo que el cliente experimenta / lo que define Delay |
+| Proxy de prep = pickup − store_notify | El ready exacto no se observa |
+| Agregados expanding / solo órdenes previas | Evita leakage temporal |
+| Features de hora, categoría, distancia, hist store/zona | Disponibles (o precomputables) en checkout |
+| Split temporal train/test | Evalúa generalización a futuro, no shuffle aleatorio |
 
-- Target: tiempo total checkout → entrega (y/o componentes).
-- Forma de la promesa: intervalo `[ETA_low, ETA_high]` calibrado a un nivel de cobertura (ej. cuantiles).
-- Consumo en línea: features disponibles **solo al momento del checkout**.
+### Variables predictoras principales
 
-## Estrategia de activación del comercio
+| Feature | Por qué |
+|---------|---------|
+| `hour`, `dow` | Estacionalidad de demanda/tráfico |
+| `category_*` | Prep distinto (food > grocery > pharmacy) |
+| `distance_km` | Impacta courier-to-store y delivery leg |
+| `store_prep_p50_hist` / `p90_hist` | Capacidad crónica del comercio |
+| `zone_courier_p50_hist` | Velocidad típica de retiro en la zona |
+| `zone_load_hist` | Proxy de congestión reciente |
 
-*(Completar al implementar)*
+## Estimación de la promesa
 
-Objetivo: notificar lo suficientemente temprano para que el pedido esté listo cuando llegue el repartidor, sin generar espera excesiva en el PoS.
+Se entrenan **3 LightGBM quantile regressors** (`α = 0.2 / 0.5 / 0.8`) sobre `total_delivery_minutes`.
+
+- El intervalo de promesa usa `p20`–`p80`.
+- Se convierte a timestamps absolutos, se redondea a **15 minutos** y se clampea al mismo día.
+- `confidence` es una transformación monótona del ancho relativo del intervalo (más angosto ⇒ más confianza).
+
+## Activación del comercio
+
+```text
+activation_offset = max(0, courier_to_store_p50 - prep_p50 - buffer)
+store_activation_ts = checkout_ts + activation_offset
+```
+
+Objetivo: que el pedido esté listo cerca de la llegada del courier, evitando comida esperando en mostrador y couriers esperando prep.
+
+## Evaluación
+
+Tras `python scripts/run_pipeline.py`, ver `artifacts/metrics.json` y el notebook [`notebooks/01_evaluation.ipynb`](notebooks/01_evaluation.ipynb).
+
+Métricas principales (holdout temporal, seed=42):
+
+| Métrica | Valor aprox. |
+|---------|--------------|
+| coverage | ~0.58 |
+| delay_rate | ~0.20 |
+| mean_width_minutes | ~10 |
+| mae_p50 | ~5 min |
+
+Tradeoff explícito: subir el cuantil alto mejora coverage y baja delay, pero ensancha la ventana y puede perjudicar conversión. El notebook explora esa curva.
 
 ## API
-
-Servicio HTTP con endpoint:
-
-```http
-POST /delivery-promise
-```
-
-### Ejemplo de request (borrador de contrato)
-
-```json
-{
-  "order_id": "ord_123",
-  "checkout_ts": "2026-08-03T20:45:00-03:00",
-  "store_id": "store_42",
-  "category": "food",
-  "destination": { "lat": -34.60, "lon": -58.38 },
-  "origin": { "lat": -34.59, "lon": -58.41 }
-}
-```
-
-### Ejemplo de response (borrador de contrato)
-
-```json
-{
-  "order_id": "ord_123",
-  "promise_window": {
-    "start": "2026-08-03T21:15:00-03:00",
-    "end": "2026-08-03T21:45:00-03:00"
-  },
-  "store_activation_ts": "2026-08-03T21:00:00-03:00",
-  "confidence": 0.85
-}
-```
-
-### Cómo levantar el servicio
 
 ```powershell
 uvicorn src.api.main:app --reload --port 8000
 ```
 
-## Evaluación
+Docs interactivas: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-Métricas y criterios propuestos:
+### `GET /health`
 
-- Cobertura del intervalo (hit rate de entrega dentro de promesa).
-- Ancho promedio del intervalo (competitividad / utilidad).
-- Delay rate y magnitud de delay.
-- Calidad de la activación (tiempo de espera del pedido listo vs. courier tardío).
+### `POST /delivery-promise`
+
+Request:
+
+```json
+{
+  "order_id": "ord_demo_001",
+  "checkout_ts": "2026-08-03T20:45:00-03:00",
+  "store_id": "store_010",
+  "category": "food",
+  "origin": { "lat": -34.6037, "lon": -58.3816 },
+  "destination": { "lat": -34.6150, "lon": -58.4200 }
+}
+```
+
+Response:
+
+```json
+{
+  "order_id": "ord_demo_001",
+  "promise_window": {
+    "start": "2026-08-03T21:15:00-03:00",
+    "end": "2026-08-03T21:45:00-03:00"
+  },
+  "store_activation_ts": "2026-08-03T20:48:00-03:00",
+  "confidence": 0.81
+}
+```
+
+Ejemplo `curl`:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/delivery-promise `
+  -H "Content-Type: application/json" `
+  -d "{\"order_id\":\"ord_demo_001\",\"checkout_ts\":\"2026-08-03T20:45:00-03:00\",\"store_id\":\"store_010\",\"category\":\"food\",\"origin\":{\"lat\":-34.6037,\"lon\":-58.3816},\"destination\":{\"lat\":-34.615,\"lon\":-58.42}}"
+```
 
 ## Supuestos, riesgos y limitaciones
 
-*(Completar con los supuestos finales de la solución)*
-
-- El fin exacto del empaquetado no es observable.
-- Los datos sintéticos aproximan la dinámica operativa; no reemplazan datos reales.
-- Features en línea están limitadas a información disponible en checkout.
+- Los datos son sintéticos: capturan mecanismos, no la distribución real de Proximity.
+- El proxy de prep mezcla preparación verdadera con espera del courier.
+- Los agregados online del demo usan estadísticas globales del dataset; en producción serían tablas batch point-in-time / near-real-time.
+- No modelamos cancelaciones, reasignación de couriers ni clima.
+- La promesa es single-shot: no hay recalibración post-checkout.
 
 ## Evolución en producción
 
-Ideas de siguiente paso: calibración online, feedback de delay, modelos por segmento (ciudad/categoría), monitoreo de drift y A/B de agresividad de promesa.
+1. Features online con stores de agregados frescos (minutos/horas).
+2. Calibración de cuantiles por ciudad/categoría y monitoreo de delay.
+3. Optimización multi-objetivo (conversión vs delay) con A/B.
+4. Modelos de componentes (prep / courier / delivery) + suma con incertidumbre.
+5. Feedback loop con outcomes reales y detección de drift.
 
 ## Declaración de uso de IA
 
-Se permite el uso de herramientas de IA. Declaración a completar:
+| Herramienta | Uso | Validado / modificado / descartado |
+|-------------|-----|------------------------------------|
+| Cursor (asistente de código) | Scaffold del repo, generador sintético, SQL documental, pipeline LightGBM, FastAPI y README | Se validó el contrato del endpoint, el anti-leakage temporal y la métrica de cobertura/delay. Se descartó deep learning (innecesario para este problema). La estrategia de activación y los cuantiles 20/80 se eligieron y revisaron manualmente por interpretabilidad en la defensa. |
 
-| Herramienta | Uso | Qué se validó / modificó / descartó |
-|-------------|-----|-------------------------------------|
-| Cursor / asistente de código | Setup del entorno, estructura del repo, borrador de README | Pendiente de validación humana sobre diseño del modelo y métricas |
-
-Durante la defensa se podrá explicar y defender cada decisión de la solución.
+Durante la defensa se pueden explicar y defender todas las decisiones de diseño anteriores.

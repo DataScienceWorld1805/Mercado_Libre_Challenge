@@ -1,0 +1,45 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+.env.*
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Model artifacts / local data (optional large files)
+artifacts/
+*.pkl
+*.joblib
+data/raw/
+data/processed/
+!data/.gitkeep
+
+# Logs / coverage
+*.log
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/

@@ -1,0 +1,48 @@
+# Core data science
+numpy
+pandas
+scipy
+polars
+pyarrow
+openpyxl
+
+# Visualization
+matplotlib
+seaborn
+plotly
+
+# Machine learning
+scikit-learn
+statsmodels
+xgboost
+lightgbm
+joblib
+imbalanced-learn
+category-encoders
+
+# Deep learning
+torch
+torchvision
+torchaudio
+
+# Notebooks
+jupyter
+ipykernel
+notebook
+
+# API / endpoints
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+httpx
+requests
+flask
+gunicorn
+
+# Utilities
+python-dotenv
+tqdm
+Pillow
+PyYAML
+orjson

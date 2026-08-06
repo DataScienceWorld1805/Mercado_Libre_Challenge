@@ -11,6 +11,16 @@ La promesa se comunica una sola vez, como intervalo del mismo día (ej. 21:15–
 
 ## Cómo leer esta propuesta
 
+**Orden de lectura recomendado (para comprender la solución de punta a punta):**
+
+1. [Formalización del problema](#formalización-del-problema) — qué se resuelve y qué se devuelve  
+2. [Flujo de la solución](#flujo-de-la-solución) — offline vs online  
+3. [Datos, SQL y variables predictoras](#datos-sql-y-variables-predictoras) — qué información se usa y por qué  
+4. [Estimación de la promesa](#estimación-de-la-promesa) — modelo, intervalo y activación  
+5. [Evaluación](#evaluación) — cómo se mide el tradeoff  
+6. [Setup y reproducción](#setup-y-reproducción) + [API HTTP](#api-http) — cómo correrlo y probarlo  
+7. [Supuestos, riesgos y limitaciones](#supuestos-riesgos-y-limitaciones) + [Evolución en un contexto productivo](#evolución-en-un-contexto-productivo)
+
 | Si querés… | Empezá por… |
 |------------|-------------|
 | Entender el problema y la formalización | [Formalización del problema](#formalización-del-problema) |
@@ -35,9 +45,7 @@ La promesa se comunica una sola vez, como intervalo del mismo día (ej. 21:15–
 
 No estimamos un ETA puntual. Estimamos la **distribución condicional** del tiempo total:
 
-\[
-Y = \text{minutos desde checkout hasta entrega al cliente}
-\]
+`Y = minutos desde checkout hasta entrega al cliente`
 
 En checkout el sistema devuelve dos decisiones:
 
@@ -177,15 +185,21 @@ más `prep_ready_ts` **latente** (solo simulación; nunca feature).
 
 Se entrenan **3 LightGBM quantile regressors** (`α = 0.2 / 0.5 / 0.8`) sobre `total_delivery_minutes`.
 
+| Cuantil | Rol |
+|---------|-----|
+| `p20` | Cota inferior del intervalo de promesa |
+| `p80` | Cota superior del intervalo de promesa |
+| `p50` | Tiempo típico (centro). **No** arma la ventana al cliente; se usa para `confidence` y para medir `mae_p50` en evaluación |
+
 Traducción a producto:
 
 1. El modelo predice minutos (`p20`, `p50`, `p80`).
-2. El intervalo de promesa usa `p20`–`p80`.
+2. El intervalo de promesa al cliente usa solo `p20`–`p80`.
 3. Se convierten a timestamps: `checkout_ts + minutos`.
 4. Se redondean a bloques de **15 minutos** y se limitan al mismo día.
 5. Eso es lo que ve el checkout en `promise_window.start` / `end`.
 
-`confidence` es una transformación del ancho relativo del intervalo (más angosto ⇒ mayor confianza). No es la probabilidad exacta de “llega sí o sí”.
+`confidence` se calcula con el ancho del intervalo relativo al `p50` (`(p80 - p20) / p50`): más angosto respecto del tiempo típico ⇒ mayor confianza. No es la probabilidad exacta de “llega sí o sí”.
 
 ### Activación del comercio
 
@@ -305,5 +319,7 @@ curl -X POST http://127.0.0.1:8000/delivery-promise `
 | Herramienta | Uso | Validado / modificado / descartado |
 |-------------|-----|------------------------------------|
 | Cursor (asistente de código) | Scaffold del repo, generador sintético, SQL documental, pipeline LightGBM, FastAPI y README | Se validó el contrato del endpoint, el anti-leakage temporal y las métricas de cobertura/delay. Se descartó deep learning (innecesario para este problema tabular de baja latencia). La estrategia de activación y los cuantiles 20/80 se eligieron y revisaron manualmente por interpretabilidad y alineación al tradeoff de negocio. |
+| Gemini-PRO | Apoyo en formalización del problema, brainstorming de features y revisión de la narrativa de la propuesta | Se descartaron enfoques sobredimensionados (p. ej. deep learning o arquitectura multi-servicio innecesaria para el challenge). |
+| Claude.ai | Apoyo en redacción/claridad del README, revisión de supuestos/limitaciones y preparación de la explicación para la defensa | Se incorporaron mejoras de claridad y orden de lectura. Las decisiones de modelado, cuantiles, activación del comercio y métricas se validaron y ajustaron manualmente contra el enunciado y el código. |
 
 Durante la defensa se pueden explicar y defender todas las decisiones de diseño anteriores.

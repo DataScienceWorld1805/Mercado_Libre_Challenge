@@ -2,9 +2,6 @@
 numpy
 pandas
 scipy
-polars
-pyarrow
-openpyxl
 
 # Visualization
 matplotlib
@@ -20,15 +17,11 @@ joblib
 imbalanced-learn
 category-encoders
 
-# Deep learning
-torch
-torchvision
-torchaudio
-
 # Notebooks
 jupyter
 ipykernel
 notebook
+
 # API / endpoints
 fastapi
 uvicorn[standard]

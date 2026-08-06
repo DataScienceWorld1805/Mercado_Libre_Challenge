@@ -29,7 +29,6 @@ torchaudio
 jupyter
 ipykernel
 notebook
-
 # API / endpoints
 fastapi
 uvicorn[standard]
@@ -46,3 +45,4 @@ tqdm
 Pillow
 PyYAML
 orjson
+

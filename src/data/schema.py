@@ -1,5 +1,3 @@
-"""Column contracts for synthetic orders and modeling datasets."""
-
 from typing import Final
 
 # Observable event timestamps (prep_ready_ts is latent and never used as a feature).

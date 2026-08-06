@@ -14,10 +14,10 @@ def compute_store_activation(
     courier_to_store_p50: float,
     buffer_minutes: float = 2.0,
 ) -> dict[str, Any]:
-    """Choose when to notify the store after checkout.
+    """Elige cuándo notificar al comercio después del checkout.
 
-    Goal: have the order ready close to courier arrival at the PoS, avoiding
-    early prep (food waiting) and late prep (courier idle / delay).
+    Objetivo: que el pedido esté listo cerca de la llegada del repartidor al PoS,
+    evitando prep temprana (comida esperando) y prep tardía (repartidor idle / delay).
 
     activation_offset = max(0, courier_to_store_p50 - prep_p50 - buffer)
     """

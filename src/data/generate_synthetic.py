@@ -1,5 +1,3 @@
-"""Synthetic Proximity order generator with realistic operational events."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,10 +25,10 @@ def _haversine_km(lat1: np.ndarray, lon1: np.ndarray, lat2: np.ndarray, lon2: np
 
 
 def generate_orders(n_orders: int = 12000, seed: int = 42, n_stores: int = 80) -> pd.DataFrame:
-    """Generate synthetic orders with operational timestamps.
+    """Genera órdenes sintéticas con timestamps operativos.
 
-    ``prep_ready_ts`` is latent (not observable in production). It must never
-    be used as a model feature; historical prep uses an observable proxy.
+    ``prep_ready_ts`` es latente (no observable en producción). Nunca debe
+    usarse como feature del modelo; el prep histórico usa un proxy observable.
     """
     rng = np.random.default_rng(seed)
 

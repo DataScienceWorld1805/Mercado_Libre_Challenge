@@ -1,16 +1,3 @@
--- =============================================================================
--- Delivery Promise Optimization — dataset & feature construction
--- Dialect: PostgreSQL-style (documental). The Python pipeline mirrors this logic.
--- =============================================================================
--- Design decisions:
--- 1) Target = minutes from checkout to customer delivery (business outcome).
--- 2) prep_ready_ts is NOT observable → we never select it. Historical prep uses
---    an observable proxy: pickup_ts - store_notify_ts (includes courier wait).
--- 3) Historical aggregates are point-in-time (only prior orders) to avoid leakage.
--- 4) Online features must be available at checkout: time, category, distance,
---    plus pre-aggregated store/zone history.
--- =============================================================================
-
 WITH base AS (
     SELECT
         order_id,
@@ -36,7 +23,7 @@ WITH base AS (
     FROM orders
 ),
 
--- Point-in-time store prep quantiles over all prior orders of the same store
+
 store_hist AS (
     SELECT
         b.order_id,
@@ -51,7 +38,7 @@ store_hist AS (
     GROUP BY b.order_id
 ),
 
--- Zone courier speed history + short-window load (prior 3 hours)
+
 zone_hist AS (
     SELECT
         b.order_id,
